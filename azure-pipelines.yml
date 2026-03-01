@@ -18,3 +18,23 @@ steps:
     dotnet build ReviewTest/ReviewTest.sln --no-restore
     dotnet test ReviewTest/ReviewTest.sln --no-build
   displayName: "Build & test"
+
+- bash: |
+    set -e
+    mkdir -p $(Build.ArtifactStagingDirectory)/prmeta
+
+    cat > $(Build.ArtifactStagingDirectory)/prmeta/pr.json <<EOF
+    {
+      "pullRequestId": "$(System.PullRequest.PullRequestId)",
+      "sourceBranch": "$(System.PullRequest.SourceBranch)",
+      "targetBranch": "$(System.PullRequest.TargetBranch)",
+      "repositoryId": "$(Build.Repository.ID)",
+      "teamProject": "$(System.TeamProject)",
+      "collectionUri": "$(System.CollectionUri)"
+    }
+    EOF
+  displayName: "Create PR metadata artifact"
+
+- publish: $(Build.ArtifactStagingDirectory)/prmeta
+  artifact: prmeta
+  displayName: "Publish prmeta artifact"
