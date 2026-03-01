@@ -6,7 +6,7 @@ trigger: none
 resources:
   pipelines:
     - pipeline: prbuild
-      source: PR-Validate          # <-- NAMNET på Pipeline A i Azure DevOps
+      source: PR-Validate
       trigger: true                # trigga när Pipeline A blir klar [1](https://learn.microsoft.com/es-es/training/modules/ado-github-migrations-3/?WT.mc_id=api_CatalogApi&sso=viva-learning)
 
 pool:
