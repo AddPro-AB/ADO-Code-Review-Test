@@ -1,0 +1,25 @@
+# Pipeline A – Minimal PR validation
+name: PR-Validate
+
+trigger: none   # Ingen CI-trigger, bara PR
+
+pr:
+  autoCancel: true
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- checkout: self
+  fetchDepth: 0
+
+- script: |
+    set -e
+    dotnet restore
+    dotnet build
+    dotnet test
+  displayName: "Build & test"
