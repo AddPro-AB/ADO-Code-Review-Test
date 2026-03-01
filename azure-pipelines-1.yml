@@ -7,7 +7,7 @@ resources:
   pipelines:
     - pipeline: prbuild
       source: PR-Validate
-      trigger: true                # trigga när Pipeline A blir klar [1](https://learn.microsoft.com/es-es/training/modules/ado-github-migrations-3/?WT.mc_id=api_CatalogApi&sso=viva-learning)
+      trigger: true
 
 pool:
   vmImage: ubuntu-latest
@@ -18,6 +18,7 @@ variables:
   value: "AddPro-AB"
 - name: githubRepo
   value: "ADO-Code-Review-Test"
+# githubBase is no longer relied upon for PR creation (GitHub has no 'main' today)
 - name: githubBase
   value: "main"
 
@@ -25,7 +26,6 @@ steps:
 - checkout: self
   persistCredentials: true
 
-# Ladda ner artefakten från Pipeline A (pipeline resource)
 - download: prbuild
   artifact: prmeta
   displayName: "Download artifact prmeta from Pipeline A"
@@ -47,11 +47,40 @@ steps:
     echo "Source: $SRC_BRANCH"
     echo "Target: $TGT_BRANCH"
 
-    # 1) Hämta PR-branch och checka ut den
+    # --------------------------------------------------------------------
+    # GitHub headers (define early so they can be reused)
+    # --------------------------------------------------------------------
+    AUTH_HEADER="Authorization: Bearer ${GITHUB_PAT}"
+    ACCEPT_HEADER="Accept: application/vnd.github+json"
+    VER_HEADER="X-GitHub-Api-Version: 2022-11-28"
+
+    # --------------------------------------------------------------------
+    # Determine GitHub base branch AUTHORITATIVELY (your repo has no 'main')
+    # This matches how the GitHub UI defaults base branch.
+    # --------------------------------------------------------------------
+    DEFAULT_BRANCH=$(curl -sS \
+      -H "$AUTH_HEADER" \
+      -H "$ACCEPT_HEADER" \
+      -H "$VER_HEADER" \
+      "${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}" | jq -r '.default_branch // empty')
+
+    if [ -z "$DEFAULT_BRANCH" ]; then
+      echo "ERROR: Could not determine GitHub default branch"
+      exit 1
+    fi
+
+    BASE="$DEFAULT_BRANCH"
+    echo "Using GitHub base branch (default_branch): $BASE"
+
+    # --------------------------------------------------------------------
+    # 1) Fetch PR branch from Azure DevOps and checkout
+    # --------------------------------------------------------------------
     git fetch origin "${SRC_BRANCH}:${PR_ID}-src"
     git checkout "${PR_ID}-src"
 
-    # 2) Pusha till GitHub-mirror som unik branch
+    # --------------------------------------------------------------------
+    # 2) Push to GitHub mirror as unique branch
+    # --------------------------------------------------------------------
     GH_BRANCH="ado-pr-${PR_ID}"
     GH_REMOTE="https://${GITHUB_PAT}@${GITHUB_HOST}/${GITHUB_OWNER}/${GITHUB_REPO}.git"
 
@@ -59,30 +88,35 @@ steps:
     git remote add github "$GH_REMOTE"
     git push --force github "HEAD:refs/heads/${GH_BRANCH}"
 
-    # 3) Skapa GitHub PR (eller hitta befintlig)
+    # --------------------------------------------------------------------
+    # 3) Create GitHub PR (or find existing)
+    # --------------------------------------------------------------------
     TITLE="[ADO PR] ${PR_ID}"
     BODY="Speglad från Azure DevOps PR ${PR_ID}\nSource: ${SRC_BRANCH}\nTarget: ${TGT_BRANCH}"
 
     PR_JSON=$(jq -n \
       --arg title "$TITLE" \
       --arg head "$GH_BRANCH" \
-      --arg base "$GITHUB_BASE" \
+      --arg base "$BASE" \
       --arg body "$BODY" \
       '{title:$title, head:$head, base:$base, body:$body}')
 
-    AUTH_HEADER="Authorization: Bearer ${GITHUB_PAT}"
-    ACCEPT_HEADER="Accept: application/vnd.github+json"
-    VER_HEADER="X-GitHub-Api-Version: 2022-11-28"
-
     CREATE_URL="${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls"
-    CREATE_RESP=$(curl -sS -X POST "$CREATE_URL" -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -H "$VER_HEADER" -d "$PR_JSON" || true)
+    echo "Creating PR via: $CREATE_URL"
+    echo "PR payload: $PR_JSON"
+
+    CREATE_RESP=$(curl -sS -X POST "$CREATE_URL" \
+      -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -H "$VER_HEADER" \
+      -d "$PR_JSON" || true)
 
     GH_PR_NUMBER=$(echo "$CREATE_RESP" | jq -r '.number // empty')
 
+    # If creation failed (e.g., PR exists), try lookup by head branch
     if [ -z "$GH_PR_NUMBER" ]; then
-      echo "PR may already exist, searching by head branch..."
-      LIST_URL="${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?state=open&head=${GITHUB_OWNER}:${GH_BRANCH}"
-      GH_PR_NUMBER=$(curl -sS "$LIST_URL" -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -H "$VER_HEADER" | jq -r '.[0].number // empty')
+      echo "PR may already exist or create failed, searching by head branch..."
+      LIST_URL="${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?state=all&head=${GITHUB_OWNER}:${GH_BRANCH}"
+      GH_PR_NUMBER=$(curl -sS "$LIST_URL" \
+        -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -H "$VER_HEADER" | jq -r '.[0].number // empty')
     fi
 
     if [ -z "$GH_PR_NUMBER" ]; then
@@ -94,7 +128,9 @@ steps:
     GH_PR_URL="https://${GITHUB_HOST}/${GITHUB_OWNER}/${GITHUB_REPO}/pull/${GH_PR_NUMBER}"
     echo "GitHub PR: $GH_PR_URL"
 
-    # 4) Hämta reviews (Copilot triggas via ruleset i GitHub) [4](https://itm8-my.sharepoint.com/personal/johgu_itm8_com/_layouts/15/Doc.aspx?sourcedoc=%7B6047FFEF-57C5-4DDB-8B73-0A554BE67FF9%7D&file=itm8%20utvecklingsprinciper%20v1.1.docx&action=default&mobileredirect=true&DefaultItemOpen=1)
+    # --------------------------------------------------------------------
+    # 4) Fetch reviews (Copilot via ruleset)
+    # --------------------------------------------------------------------
     REV_URL="${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls/${GH_PR_NUMBER}/reviews"
     REVIEWS=$(curl -sS "$REV_URL" -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -H "$VER_HEADER")
 
@@ -104,10 +140,10 @@ steps:
       REVIEW_TEXT="(Inga GitHub reviews hittades ännu. Om Copilot är aktiverat via ruleset bör den dyka upp kort därefter.)"
     fi
 
-    # 5) Posta tillbaka till Azure DevOps PR som PR-thread
-    # Azure DevOps PR thread API används för att skapa PR-kommentartrådar [2](https://teams.microsoft.com/l/meeting/details?eventId=AAMkADExODU4MDg2LTA5NmItNGNmOC05MDk0LTdmNjY4YjhjNTQ4YgBGAAAAAAAdHqjoTaCpSp1Arrwo_gU7BwDqF1cBuosFTp0VaB134jOlAAAAAAENAADqF1cBuosFTp0VaB134jOlAACOm-UvAAA%3d)[3](https://teams.microsoft.com/l/meeting/details?eventId=AAMkADExODU4MDg2LTA5NmItNGNmOC05MDk0LTdmNjY4YjhjNTQ4YgBGAAAAAAAdHqjoTaCpSp1Arrwo_gU7BwDqF1cBuosFTp0VaB134jOlAAAAAAENAADqF1cBuosFTp0VaB134jOlAACOm-UpAAA%3d)
+    # --------------------------------------------------------------------
+    # 5) Post back to Azure DevOps PR as thread
+    # --------------------------------------------------------------------
     ADO_URL="${COLLECTION}${PROJECT}/_apis/git/repositories/${REPO_ID}/pullRequests/${PR_ID}/threads?api-version=7.1"
-
     MARKDOWN="## GitHub Copilot/Review (via speglad PR)\nGitHub PR: ${GH_PR_URL}\n\n${REVIEW_TEXT}"
 
     ADO_BODY=$(jq -n --arg content "$MARKDOWN" '{
