@@ -3,7 +3,12 @@ name: PR-Validate
 
 trigger: none   # Ingen CI-trigger, bara PR
 
-pr: none
+pr:
+  autoCancel: true
+  branches:
+    include:
+      - main
+      - develop
 
 pool:
   vmImage: ubuntu-latest
@@ -14,7 +19,7 @@ steps:
 
 - script: |
     set -e
-    dotnet restore
-    dotnet build
-    dotnet test
+    dotnet restore ReviewTest/ReviewTest.sln
+    dotnet build ReviewTest/ReviewTest.sln --no-restore
+    dotnet test ReviewTest/ReviewTest.sln --no-build
   displayName: "Build & test"
