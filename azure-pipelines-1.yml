@@ -47,6 +47,10 @@ steps:
     echo "Source: $SRC_BRANCH"
     echo "Target: $TGT_BRANCH"
 
+    
+    BASE="${TGT_BRANCH#refs/heads/}"   # converts refs/heads/main -> main
+    echo "GitHub base: $BASE"
+
     # 1) Hämta PR-branch och checka ut den
     git fetch origin "${SRC_BRANCH}:${PR_ID}-src"
     git checkout "${PR_ID}-src"
