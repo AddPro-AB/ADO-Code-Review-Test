@@ -3,12 +3,7 @@ name: PR-Validate
 
 trigger: none   # Ingen CI-trigger, bara PR
 
-pr:
-  autoCancel: true
-  branches:
-    include:
-      - main
-      - develop
+pr: none
 
 pool:
   vmImage: ubuntu-latest
