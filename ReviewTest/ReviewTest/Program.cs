@@ -6,9 +6,11 @@ var run = true;
 
 while(run)
 {
-    Console.WriteLine("Row number = " + nrOfPrints);
 
     nrOfPrints++;
 
     run = nrOfPrints == 0;
+
+    Console.WriteLine("Row number = " + nrOfPrints);
+
 }
