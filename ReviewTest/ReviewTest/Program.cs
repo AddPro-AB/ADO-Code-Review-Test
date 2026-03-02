@@ -1,7 +1,7 @@
 ﻿// See https://aka.ms/new-console-template for more information
 Console.WriteLine("Hello, World!");
 
-var nrOfPrints = 10;
+var nrOfPrints = 0;
 var run = true;
 
 while (run)
@@ -11,6 +11,6 @@ while (run)
 
     Console.WriteLine("Row number = " + nrOfPrints);
 
-    run = nrOfPrints > 0;
+    run = nrOfPrints <= 10;
 
 }
