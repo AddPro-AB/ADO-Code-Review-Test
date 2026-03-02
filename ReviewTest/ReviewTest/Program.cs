@@ -6,7 +6,7 @@ var nrOfPrints = 10;
 do
 {
 
-    nrOfPrints++;
+    nrOfPrints--;
 
     Console.WriteLine("Row number = " + nrOfPrints);
 
