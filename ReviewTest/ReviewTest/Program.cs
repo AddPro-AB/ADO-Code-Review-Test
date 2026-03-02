@@ -2,15 +2,12 @@
 Console.WriteLine("Hello, World!");
 
 var nrOfPrints = 10;
-var run = true;
 
-while(run)
+do
 {
 
     nrOfPrints++;
 
-    run = nrOfPrints == 0;
-
     Console.WriteLine("Row number = " + nrOfPrints);
 
-}
+} while (nrOfPrints == 0);
